@@ -1,8 +1,5 @@
 use futures_util::{SinkExt, StreamExt};
-use tokio::{
-    io::{AsyncBufReadExt, BufReader, stdin},
-    sync::mpsc,
-};
+use tokio::io::{AsyncBufReadExt, BufReader, stdin};
 use tokio_tungstenite::{connect_async, tungstenite::Message};
 
 #[tokio::main]
@@ -11,29 +8,12 @@ async fn main() {
         .await
         .expect("Failed to connect");
 
-    let (mut write, mut read) = ws_stream.split();
+    let (write, mut read) = ws_stream.split();
 
-    // Channel to send lines from stdin to the websocket writer task
-    let (tx, mut rx) = mpsc::channel::<String>(16);
-
-    // Task to read from stdin
-    let tx_stdin = tx.clone();
-    tokio::spawn(async move {
-        let mut lines = BufReader::new(stdin()).lines();
-        while let Ok(Some(line)) = lines.next_line().await {
-            if tx_stdin.send(line).await.is_err() {
-                break;
-            }
-        }
-    });
-
-    // Task to write to websocket
+    // Spawn the stdin actor, which owns the write sink
+    let stdin_actor = InputActor::new(write);
     let write_task = tokio::spawn(async move {
-        while let Some(line) = rx.recv().await {
-            if write.send(Message::Text(line.into())).await.is_err() {
-                break;
-            }
-        }
+        stdin_actor.run().await;
     });
 
     // Read from websocket and print to stdout
@@ -53,4 +33,30 @@ async fn main() {
     }
 
     let _ = write_task.await;
+}
+
+// Actor responsible for reading lines from stdin and sending them to the server
+struct InputActor<W>
+where
+    W: SinkExt<Message> + Unpin + Send + 'static,
+{
+    write: W,
+}
+
+impl<W> InputActor<W>
+where
+    W: SinkExt<Message> + Unpin + Send + 'static,
+{
+    fn new(write: W) -> Self {
+        Self { write }
+    }
+
+    async fn run(mut self) {
+        let mut lines = BufReader::new(stdin()).lines();
+        while let Ok(Some(line)) = lines.next_line().await {
+            if self.write.send(Message::Text(line.into())).await.is_err() {
+                break;
+            }
+        }
+    }
 }
