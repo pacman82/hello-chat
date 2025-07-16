@@ -6,14 +6,15 @@ use tokio_tungstenite::{accept_async, tungstenite::Message};
 /// 
 /// We receive messages from the client and broadcast them to all other clients.
 pub struct Client {
-    send_handle: tokio::task::JoinHandle<()>,
+    inbound_handle: tokio::task::JoinHandle<()>,
+    outbound_handle: tokio::task::JoinHandle<()>,
 }
 
 impl Client {
     pub async fn new(
         stream: tokio::net::TcpStream,
         tx: broadcast::Sender<String>,
-        mut rx: broadcast::Receiver<String>,
+        rx: broadcast::Receiver<String>,
     ) -> Self {
         let ws_stream = match accept_async(stream).await {
             Ok(ws) => ws,
@@ -24,29 +25,29 @@ impl Client {
         };
         println!("New WebSocket connection");
 
-        let (mut write, mut read) = ws_stream.split();
+        let (write, read) = ws_stream.split();
 
-        // Spawn the SendActor and hold its handle
-        let send_handle = tokio::spawn(async move {
-            // Spawn broadcast receiver task inline
-            let broadcast_task = tokio::spawn(async move {
-                while let Ok(msg) = rx.recv().await {
-                    if write.send(Message::Text(msg.into())).await.is_err() {
-                        break;
-                    }
-                }
-            });
-            SendActor::new(read, tx.clone()).run().await;
-            let _ = broadcast_task.await;
+        // Spawn the inbound broadcaster (client -> broadcast channel)
+        let inbound_handle = tokio::spawn(async move {
+            InboundToBroadcast::new(read, tx.clone()).run().await;
         });
 
-        Self { send_handle }
+        // Spawn the outbound broadcaster (broadcast channel -> client)
+        let outbound_handle = tokio::spawn(async move {
+            BroadcastToOutbound::new(rx, write).run().await;
+        });
+
+        // Optionally, you could join both handles here or store both
+        Self {
+            inbound_handle,
+            outbound_handle,
+        }
     }
 }
 
 /// Actor responsible for reading messages from the websocket and sending them to the broadcast
 /// channel
-pub struct SendActor<R>
+pub struct InboundToBroadcast<R>
 where
     R: StreamExt<Item = Result<Message, tokio_tungstenite::tungstenite::Error>> + Unpin,
 {
@@ -54,7 +55,7 @@ where
     tx: broadcast::Sender<String>,
 }
 
-impl<R> SendActor<R>
+impl<R> InboundToBroadcast<R>
 where
     R: StreamExt<Item = Result<Message, tokio_tungstenite::tungstenite::Error>> + Unpin,
 {
@@ -72,6 +73,32 @@ where
                 }
                 Ok(Message::Close(_)) => break,
                 _ => {}
+            }
+        }
+    }
+}
+
+/// Actor responsible for receiving broadcasted messages and writing them to the websocket
+pub struct BroadcastToOutbound<W>
+where
+    W: SinkExt<Message> + Unpin,
+{
+    rx: broadcast::Receiver<String>,
+    write: W,
+}
+
+impl<W> BroadcastToOutbound<W>
+where
+    W: SinkExt<Message> + Unpin,
+{
+    pub fn new(rx: broadcast::Receiver<String>, write: W) -> Self {
+        Self { rx, write }
+    }
+
+    pub async fn run(mut self) {
+        while let Ok(msg) = self.rx.recv().await {
+            if self.write.send(Message::Text(msg.into())).await.is_err() {
+                break;
             }
         }
     }
