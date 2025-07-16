@@ -16,9 +16,8 @@ async fn main() {
     while let Ok((stream, _)) = listener.accept().await {
         let tx = tx.clone();
         let rx = tx.subscribe();
-        let client = Client::new(stream, tx, rx);
         tokio::spawn(async move {
-            client.run().await;
+            let _client = Client::new(stream, tx, rx).await;
         });
     }
 }
