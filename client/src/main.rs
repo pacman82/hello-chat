@@ -1,4 +1,4 @@
-use std::{fmt::Display, future::pending};
+use std::fmt::Display;
 
 use futures_util::{SinkExt, Stream, StreamExt};
 use tokio::{
