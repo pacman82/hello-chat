@@ -18,13 +18,7 @@ async fn main() {
 
     let (write, read) = ws_stream.split();
 
-    let mut shutdown_input = recv_shutdown.resubscribe();
-    let stdin_actor = InputSender::new(write, async move {
-        shutdown_input
-            .recv()
-            .await
-            .expect("shutdown sender must outlive receiver");
-    });
+    let stdin_actor = InputSender::new(write, recv_shutdown.resubscribe());
     let send_input = tokio::spawn(async move {
         stdin_actor.run().await;
     });
@@ -46,26 +40,25 @@ async fn main() {
 }
 
 // Actor responsible for reading lines from stdin and sending them to the server
-struct InputSender<W, S>
+struct InputSender<W>
 where
     W: SinkExt<Message> + Unpin + Send + 'static,
 {
     write: W,
-    shutdown: S,
+    shutdown: broadcast::Receiver<()>,
 }
 
-impl<W, S> InputSender<W, S>
+impl<W> InputSender<W>
 where
     W: SinkExt<Message> + Unpin + Send + 'static,
-    S: Future<Output = ()>,
 {
-    fn new(write: W, shutdown: S) -> Self {
+    fn new(write: W, shutdown: broadcast::Receiver<()>) -> Self {
         Self { write, shutdown }
     }
 
     async fn run(mut self) {
         select! {
-            () = self.shutdown => (),
+            _ = self.shutdown.recv() => (),
             () = Self::consume_input_stream(&mut self.write) => (),
         }
         // We could give the server a probper good bye here
