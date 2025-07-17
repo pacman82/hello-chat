@@ -1,4 +1,4 @@
-use futures_util::SinkExt;
+use futures_util::{Sink, SinkExt};
 use tokio::{
     io::{AsyncBufReadExt, BufReader, stdin},
     select,
@@ -9,7 +9,7 @@ use tokio_tungstenite::tungstenite::Message;
 // Actor responsible for reading lines from stdin and sending them to the server
 pub struct InputSender<W>
 where
-    W: SinkExt<Message> + Unpin + Send + 'static,
+    W: Sink<Message> + Unpin + Send + 'static,
 {
     write: W,
     shutdown: broadcast::Receiver<()>,
@@ -17,7 +17,7 @@ where
 
 impl<W> InputSender<W>
 where
-    W: SinkExt<Message> + Unpin + Send + 'static,
+    W: Sink<Message> + Unpin + Send + 'static,
 {
     pub fn new(write: W, shutdown: broadcast::Receiver<()>) -> Self {
         Self { write, shutdown }
