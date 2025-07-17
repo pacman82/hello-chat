@@ -13,11 +13,11 @@ async fn main() {
     // Create a broadcast channel for all clients
     let (tx, _) = broadcast::channel::<String>(100);
 
+    let mut clients = Vec::new();
+
     while let Ok((stream, _)) = listener.accept().await {
         let tx = tx.clone();
-        let rx = tx.subscribe();
-        tokio::spawn(async move {
-            let _client = Client::new(stream, tx, rx).await;
-        });
+        let client = Client::new(stream, tx).await;
+        clients.push(client);
     }
 }

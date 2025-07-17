@@ -1,21 +1,18 @@
 use futures_util::{SinkExt, StreamExt};
-use tokio::sync::broadcast;
+use tokio::{net::TcpStream, sync::broadcast, task::JoinHandle};
 use tokio_tungstenite::{accept_async, tungstenite::Message};
 
 /// Representation of a chat client in the server code.
-/// 
+///
 /// We receive messages from the client and broadcast them to all other clients.
 pub struct Client {
-    inbound_handle: tokio::task::JoinHandle<()>,
-    outbound_handle: tokio::task::JoinHandle<()>,
+    _inbound_handle: JoinHandle<()>,
+    _outbound_handle: JoinHandle<()>,
 }
 
 impl Client {
-    pub async fn new(
-        stream: tokio::net::TcpStream,
-        tx: broadcast::Sender<String>,
-        rx: broadcast::Receiver<String>,
-    ) -> Self {
+    pub async fn new(stream: TcpStream, tx: broadcast::Sender<String>) -> Self {
+        let rx = tx.subscribe();
         let ws_stream = match accept_async(stream).await {
             Ok(ws) => ws,
             Err(e) => {
@@ -39,8 +36,8 @@ impl Client {
 
         // Optionally, you could join both handles here or store both
         Self {
-            inbound_handle,
-            outbound_handle,
+            _inbound_handle: inbound_handle,
+            _outbound_handle: outbound_handle,
         }
     }
 }
