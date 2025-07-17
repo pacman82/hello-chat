@@ -1,12 +1,11 @@
 mod input_sender;
+mod output_receiver;
 
-use std::fmt::Display;
+use futures_util::StreamExt;
+use tokio::{signal::ctrl_c, sync::broadcast};
+use tokio_tungstenite::connect_async;
 
-use futures_util::{Stream, StreamExt};
-use tokio::{select, signal::ctrl_c, sync::broadcast};
-use tokio_tungstenite::{connect_async, tungstenite::Message};
-
-use crate::input_sender::InputSender;
+use crate::{input_sender::InputSender, output_receiver::OutputReceiver};
 
 #[tokio::main]
 async fn main() {
@@ -36,47 +35,4 @@ async fn main() {
     // implement (and execute) logic for a graceful shutdown, if they should wish so.
     let _ = send_input.await;
     let _ = receive_output.await;
-}
-
-struct OutputReceiver<R> {
-    read: R,
-    shutdown: broadcast::Receiver<()>,
-}
-
-impl<R> OutputReceiver<R> {
-    pub fn new(read: R, shutdown: broadcast::Receiver<()>) -> Self {
-        OutputReceiver { read, shutdown }
-    }
-
-    pub async fn run<E>(mut self)
-    where
-        R: Stream<Item = Result<Message, E>> + Unpin,
-        E: Display,
-    {
-        // Read from websocket and print to stdout
-        while let Some(msg) = self.next().await {
-            match msg {
-                Ok(Message::Text(text)) => {
-                    println!("Received: {}", text);
-                }
-                Ok(other) => {
-                    println!("Received non-text message: {:?}", other);
-                }
-                Err(e) => {
-                    eprintln!("Error receiving message: {}", e);
-                    break;
-                }
-            }
-        }
-    }
-
-    async fn next<E>(&mut self) -> Option<Result<Message, E>>
-    where
-        R: Stream<Item = Result<Message, E>> + Unpin,
-    {
-        select! {
-            _ = self.shutdown.recv() => None,
-            msg = self.read.next() => msg
-        }
-    }
 }
