@@ -1,13 +1,12 @@
+mod input_sender;
+
 use std::fmt::Display;
 
-use futures_util::{SinkExt, Stream, StreamExt};
-use tokio::{
-    io::{AsyncBufReadExt, BufReader, stdin},
-    select,
-    signal::ctrl_c,
-    sync::broadcast,
-};
+use futures_util::{Stream, StreamExt};
+use tokio::{select, signal::ctrl_c, sync::broadcast};
 use tokio_tungstenite::{connect_async, tungstenite::Message};
+
+use crate::input_sender::InputSender;
 
 #[tokio::main]
 async fn main() {
@@ -37,41 +36,6 @@ async fn main() {
     // implement (and execute) logic for a graceful shutdown, if they should wish so.
     let _ = send_input.await;
     let _ = receive_output.await;
-}
-
-// Actor responsible for reading lines from stdin and sending them to the server
-struct InputSender<W>
-where
-    W: SinkExt<Message> + Unpin + Send + 'static,
-{
-    write: W,
-    shutdown: broadcast::Receiver<()>,
-}
-
-impl<W> InputSender<W>
-where
-    W: SinkExt<Message> + Unpin + Send + 'static,
-{
-    fn new(write: W, shutdown: broadcast::Receiver<()>) -> Self {
-        Self { write, shutdown }
-    }
-
-    async fn run(mut self) {
-        select! {
-            _ = self.shutdown.recv() => (),
-            () = Self::consume_input_stream(&mut self.write) => (),
-        }
-        // We could give the server a probper good bye here
-    }
-
-    async fn consume_input_stream(write: &mut W) {
-        let mut lines = BufReader::new(stdin()).lines();
-        while let Ok(Some(line)) = lines.next_line().await {
-            if write.send(Message::Text(line.into())).await.is_err() {
-                eprintln!("Could not send message")
-            }
-        }
-    }
 }
 
 struct OutputReceiver<R> {
