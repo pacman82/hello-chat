@@ -1,6 +1,9 @@
 use futures_util::{SinkExt, StreamExt};
 use tokio::{net::TcpStream, sync::broadcast, task::JoinHandle};
-use tokio_tungstenite::{accept_async, tungstenite::Message};
+use tokio_tungstenite::{
+    accept_async,
+    tungstenite::{self, Message},
+};
 
 /// Representation of a chat client in the server code.
 ///
@@ -24,17 +27,16 @@ impl Client {
 
         let (write, read) = ws_stream.split();
 
-        // Spawn the inbound broadcaster (client -> broadcast channel)
+        // client -> broadcast channel
         let inbound_handle = tokio::spawn(async move {
             InboundToBroadcast::new(read, tx.clone()).run().await;
         });
 
-        // Spawn the outbound broadcaster (broadcast channel -> client)
+        // broadcast channel -> client
         let outbound_handle = tokio::spawn(async move {
             BroadcastToOutbound::new(rx, write).run().await;
         });
 
-        // Optionally, you could join both handles here or store both
         Self {
             _inbound_handle: inbound_handle,
             _outbound_handle: outbound_handle,
@@ -54,7 +56,7 @@ where
 
 impl<R> InboundToBroadcast<R>
 where
-    R: StreamExt<Item = Result<Message, tokio_tungstenite::tungstenite::Error>> + Unpin,
+    R: StreamExt<Item = Result<Message, tungstenite::Error>> + Unpin,
 {
     pub fn new(read: R, tx: broadcast::Sender<String>) -> Self {
         Self { read, tx }
@@ -68,7 +70,7 @@ where
                         let _ = self.tx.send(text.to_string());
                     }
                 }
-                Ok(Message::Close(_)) => break,
+                Ok(Message::Close(_frame)) => break,
                 _ => {}
             }
         }
