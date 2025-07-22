@@ -2,7 +2,7 @@ use std::fmt::Display;
 
 use crate::{input_sender::InputSender, output_receiver::OutputReceiver};
 use futures_util::{Sink, StreamExt};
-use tokio::{sync::broadcast, task::JoinHandle};
+use tokio::{sync::watch, task::JoinHandle};
 use tokio_tungstenite::{
     connect_async,
     tungstenite::{Message, client::IntoClientRequest},
@@ -16,7 +16,7 @@ pub struct Client {
 impl Client {
     pub async fn from_websocket(
         request: impl IntoClientRequest + Unpin,
-        shutdown: broadcast::Receiver<()>,
+        shutdown: watch::Receiver<bool>,
     ) -> Self {
         let (ws_stream, _) = connect_async(request).await.expect("Failed to connect");
         let (write, read) = ws_stream.split();
@@ -24,13 +24,13 @@ impl Client {
         Self::new(write, read, shutdown)
     }
 
-    pub fn new<W, R, E>(write: W, read: R, shutdown: broadcast::Receiver<()>) -> Self
+    pub fn new<W, R, E>(write: W, read: R, shutdown: watch::Receiver<bool>) -> Self
     where
         W: Sink<Message> + Unpin + Send + 'static,
         R: futures_util::Stream<Item = Result<Message, E>> + Unpin + Send + 'static,
         E: Display,
     {
-        let input_sender = InputSender::new(write, shutdown.resubscribe());
+        let input_sender = InputSender::new(write, shutdown.clone());
         let send_input = tokio::spawn(async move {
             input_sender.run().await;
         });

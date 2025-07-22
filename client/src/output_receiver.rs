@@ -1,16 +1,16 @@
 use std::fmt::Display;
 
 use futures_util::{Stream, StreamExt};
-use tokio::{select, sync::broadcast};
+use tokio::{select, sync::watch};
 use tokio_tungstenite::tungstenite::Message;
 
 pub struct OutputReceiver<R> {
     read: R,
-    shutdown: broadcast::Receiver<()>,
+    shutdown: watch::Receiver<bool>,
 }
 
 impl<R> OutputReceiver<R> {
-    pub fn new(read: R, shutdown: broadcast::Receiver<()>) -> Self {
+    pub fn new(read: R, shutdown: watch::Receiver<bool>) -> Self {
         OutputReceiver { read, shutdown }
     }
 
@@ -41,7 +41,11 @@ impl<R> OutputReceiver<R> {
         R: Stream<Item = Result<Message, E>> + Unpin,
     {
         select! {
-            _ = self.shutdown.recv() => None,
+            _ = async {
+                while !*self.shutdown.borrow() {
+                    self.shutdown.changed().await.ok();
+                }
+            } => None,
             msg = self.read.next() => msg
         }
     }

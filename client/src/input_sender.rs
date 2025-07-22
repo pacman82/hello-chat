@@ -2,7 +2,7 @@ use futures_util::{Sink, SinkExt};
 use tokio::{
     io::{AsyncBufReadExt, BufReader, stdin},
     select,
-    sync::broadcast,
+    sync::watch,
 };
 use tokio_tungstenite::tungstenite::Message;
 
@@ -12,23 +12,27 @@ where
     W: Sink<Message> + Unpin + Send + 'static,
 {
     write: W,
-    shutdown: broadcast::Receiver<()>,
+    shutdown: watch::Receiver<bool>,
 }
 
 impl<W> InputSender<W>
 where
     W: Sink<Message> + Unpin + Send + 'static,
 {
-    pub fn new(write: W, shutdown: broadcast::Receiver<()>) -> Self {
+    pub fn new(write: W, shutdown: watch::Receiver<bool>) -> Self {
         Self { write, shutdown }
     }
 
     pub async fn run(mut self) {
         select! {
-            _ = self.shutdown.recv() => (),
+            _ = async {
+                while !*self.shutdown.borrow() {
+                    self.shutdown.changed().await.ok();
+                }
+            } => (),
             () = Self::consume_input_stream(&mut self.write) => (),
         }
-        // We could give the server a probper good bye here
+        // We could give the server a proper good bye here
     }
 
     async fn consume_input_stream(write: &mut W) {
