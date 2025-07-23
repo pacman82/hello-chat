@@ -25,11 +25,7 @@ where
 
     pub async fn run(mut self) {
         select! {
-            _ = async {
-                while !*self.shutdown.borrow() {
-                    self.shutdown.changed().await.ok();
-                }
-            } => (),
+            _ = async { self.shutdown.changed().await.ok() } => (),
             () = Self::consume_input_stream(&mut self.write) => (),
         }
         // We could give the server a proper good bye here
