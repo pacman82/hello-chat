@@ -1,5 +1,6 @@
 use std::fmt::Display;
 
+use chat::MessagePayload;
 use futures_util::{Stream, StreamExt};
 use tokio::{select, sync::watch};
 use tokio_tungstenite::tungstenite::Message;
@@ -23,7 +24,8 @@ impl<R> OutputReceiver<R> {
         while let Some(msg) = self.next().await {
             match msg {
                 Ok(Message::Text(text)) => {
-                    println!("Received: {}", text);
+                    let payload = MessagePayload::deserialize(&text);
+                    println!("[{}]: {}", payload.sender, payload.content);
                 }
                 Ok(other) => {
                     println!("Received non-text message: {:?}", other);
