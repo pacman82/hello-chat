@@ -21,11 +21,11 @@ impl<W> InputSender<W>
 where
     W: Sink<Message> + Unpin + Send + 'static,
 {
-    pub fn new(write: W, shutdown: watch::Receiver<bool>) -> Self {
+    pub fn new(write: W, shutdown: watch::Receiver<bool>, user_name: String) -> Self {
         Self {
             write,
             shutdown,
-            user_name: "Joe".to_string(),
+            user_name,
         }
     }
 

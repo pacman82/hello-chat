@@ -17,20 +17,26 @@ impl Client {
     pub async fn from_websocket(
         request: impl IntoClientRequest + Unpin,
         shutdown: watch::Receiver<bool>,
+        user_name: String,
     ) -> Self {
         let (ws_stream, _) = connect_async(request).await.expect("Failed to connect");
         let (write, read) = ws_stream.split();
 
-        Self::new(write, read, shutdown)
+        Self::new(write, read, shutdown, user_name)
     }
 
-    pub fn new<W, R, E>(write: W, read: R, shutdown: watch::Receiver<bool>) -> Self
+    pub fn new<W, R, E>(
+        write: W,
+        read: R,
+        shutdown: watch::Receiver<bool>,
+        user_name: String,
+    ) -> Self
     where
         W: Sink<Message> + Unpin + Send + 'static,
         R: futures_util::Stream<Item = Result<Message, E>> + Unpin + Send + 'static,
         E: Display,
     {
-        let input_sender = InputSender::new(write, shutdown.clone());
+        let input_sender = InputSender::new(write, shutdown.clone(), user_name);
         let send_input = tokio::spawn(async move {
             input_sender.run().await;
         });
