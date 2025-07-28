@@ -1,5 +1,6 @@
 mod client;
 
+use chat::MessagePayload;
 use tokio::{
     net::TcpListener,
     signal::ctrl_c,
@@ -29,7 +30,7 @@ async fn main() {
 
 async fn relay_messages_between_clients(listener: TcpListener, shutdown: watch::Receiver<bool>) {
     // Create a broadcast channel for all clients
-    let (tx, _) = broadcast::channel::<String>(100);
+    let (tx, _) = broadcast::channel::<MessagePayload>(100);
 
     let mut clients = Vec::new();
 
